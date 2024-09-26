@@ -2,7 +2,9 @@ function databases = loadDatabases(selectDatabase,modelAdapter)
 % loadDatabases
 %   Loads (and downloads if necessary) the organism-specific KEGG and
 %   UniProt databases that are required to extract protein information. The
-%   uniprot.ID and kegg.ID are taken from the ModelAdapter.
+%   uniprot.ID and kegg.ID are taken from the ModelAdapter. If no
+%   uniprot.ID is available, a custom uniprot.tsv file which contains the following: ORF ID, MW
+%   and sequence in the right format can be loaded.
 %
 % Input:
 %   selectDatabase  which databases should be loaded, either 'uniprot',
@@ -12,7 +14,8 @@ function databases = loadDatabases(selectDatabase,modelAdapter)
 %
 % Output:
 %   databases       contains .uniprot and .kegg structures, dependent on
-%                   which databases were selected.
+%                   which databases were selected. 'none' fills information
+%                   to .uniprot.
 %
 % Usage:
 %   databases = loadDatabases(selectDatabase,modelAdapter)
@@ -34,6 +37,18 @@ uniprot.ID   = params.uniprot.ID;
 filePath    = fullfile(params.path,'data');
 uniprot.geneIDfield = params.uniprot.geneIDfield;
 uniprot.type = params.uniprot.type;
+%if conventional GEM does not exist named as model, load the conventional
+%GEM as model
+%This way the GEM is reachable from workspace but loaded if not
+%%%%
+%GEMpath = params.convGEM;
+
+%if ~isempty(GEMpath)
+%    disp('Conventional GEM loading')
+%    model = loadConventionalGEM();
+%end
+
+%%%%%
 if strcmp(uniprot.type,'taxonomy')
     uniprot.type = 'taxonomy_id';
 end
@@ -52,6 +67,7 @@ databases.kegg = [];
 %% Uniprot
 if any(strcmp(selectDatabase,{'uniprot','both'}))
     uniprotPath = fullfile(filePath,'uniprot.tsv');
+    %printOrange('WARNING: Default ''both'' or ''uniprot'' input is used.\n')
     if ~exist(uniprotPath,'file')
         if isempty(uniprot.ID)
             printOrange('WARNING: No uniprot.ID is specified, unable to download UniProt DB.\n')
@@ -67,33 +83,58 @@ if any(strcmp(selectDatabase,{'uniprot','both'}))
             error(['Download failed, check your internet connection and try again, or manually download: ' url ...
                 ' After downloading, store the file as ' uniprotPath])
         end
-    end
-    if exist(uniprotPath,'file')
-        fid         = fopen(uniprotPath,'r');
-        fileContent = textscan(fid,'%q %q %q %q %q','Delimiter','\t','HeaderLines',1);
-        fclose(fid);
-        databases.uniprot.ID      = fileContent{1};
-        databases.uniprot.genes   = fileContent{2};
-        databases.uniprot.eccodes = fileContent{3};
-        databases.uniprot.MW      = str2double(fileContent{4});
-        databases.uniprot.seq     = fileContent{5};
+    end 
+    %%Handling custom uniprot.tsv
+
+    if exist(uniprotPath, 'file') 
+        if isempty(uniprot.ID)
+            formatSpec = '%s %f %s';
+            printOrange(['WARNING: The costum ''uniprot.tsv'' is loaded.\n' ...
+                'Enzyme field contains gene IDs and eccodes are empty strings.\n' ...
+                ''])
+            fid         = fopen(uniprotPath,'r');
+            fields = textscan(fid,formatSpec,'Delimiter','\t','HeaderLines',1);
+            
+            fclose(fid);
+            databases.uniprot.ID      = fields{1};
+            databases.uniprot.genes   = fields{1};
+            databases.uniprot.eccodes = {''};
+            databases.uniprot.MW      = fields{2};
+            databases.uniprot.seq     = fields{3};
+        else 
+            fid         = fopen(uniprotPath,'r');
+            fileContent = textscan(fid,'%q %q %q %q %q','Delimiter','\t','HeaderLines',1);
+            fclose(fid);
+            databases.uniprot.ID      = fileContent{1};
+            databases.uniprot.genes   = fileContent{2};
+            databases.uniprot.eccodes = fileContent{3};
+            databases.uniprot.MW      = str2double(fileContent{4});
+            databases.uniprot.seq     = fileContent{5};
+        end
     else
         databases.uniprot = [];
     end
-    if ~isempty(databases.uniprot)
-        [uniqueIDs,uniqueIdx] = unique(databases.uniprot.ID,'stable');
-        if numel(uniqueIDs) < numel(databases.uniprot.ID)
-            duplID = setdiff(1:numel(databases.uniprot.ID),uniqueIdx);
-            dispEM(['Duplicate entries are found for the following proteins. '...
-                    'Manually curate the ''uniprot.tsv'' file, or adjust the uniprot parameters '...
-                    'in the model adapter:'],true,databases.uniprot.ID(duplID));
-        end
-    end
 end
 
+%Subset the uniprot database based on the genes found in the conventional
+%GEM
+%{
+[~, idx] = ismember(databases.uniprot.genes, model.genes);
+uniprotGemGene = databases.uniprot.genes(idx>0);
+uniprotGemSeq = databases.uniprot.seq(idx>0);
+disp('Writing the uniprotGEM.fasta file')
+fastaPath = fullfile(filePath,'uniprotGEM.fasta');
+fid = fopen(fastaPath, 'w');
+for i = 1:length(uniprotGemSeq)
+    fprintf(fid, '>%s\n%s\n', uniprotGemGene{i}, uniprotGemSeq{i});
+end
+fclose(fid);
+
+%}
 %% KEGG
 if any(strcmp(selectDatabase,{'kegg','both'}))
     keggPath = fullfile(filePath,'kegg.tsv');
+    %printOrange('WARNING: Default ''both'' or ''kegg'' input is used.\n')
     if ~exist(keggPath,'file')
         if isempty(kegg.ID)
             printOrange('WARNING: No kegg.ID is specified, unable to download KEGG DB.\n')

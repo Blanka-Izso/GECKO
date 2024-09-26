@@ -107,7 +107,7 @@ doc makeEcModel
 % In this script there is code at the end of each stage to store a copy of
 % the ecModel. However, only the stage 3 ecModel is kept and distributed
 % together with GECKO (as is shown at the end of stage 3).
-saveEcModel(ecModel,'ecYeastGEM_stage1.yml');
+    saveEcModel(ecModel,'ecYeastGEM_stage1.yml');
 
 %% STAGE 2: integration of kcat into the ecModel structure
 % Uncomment the line below if you want to reload the model.

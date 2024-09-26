@@ -141,6 +141,7 @@ end
 uniprotDB = loadDatabases('both', modelAdapter);
 uniprotDB = uniprotDB.uniprot;
 
+
 %1: Remove gene rules from pseudoreactions (if any):
 if exist(fullfile(params.path,'data','pseudoRxns.tsv'),'file')
     fID        = fopen(fullfile(params.path,'data','pseudoRxns.tsv'));
@@ -247,17 +248,28 @@ else
 end
     
 %7: Gather enzyme information via UniprotDB
+% getting the genes (ORFs) from the GEM
 uniprotCompatibleGenes = modelAdapter.getUniprotCompatibleGenes(model.genes);
+% checking the genes from the GEM to the 'uniprot.tsv'
 [Lia,Locb] = ismember(uniprotCompatibleGenes,uniprotDB.genes);
 
+% uniprot contains the uniprotIDs from the 'uniprotConversion.tsv' if
+% ensembl database was used
 uniprot = modelAdapter.getUniprotIDsFromTable(uniprotCompatibleGenes);
+% if the length of uniprot from the conversion.tsv and the genes from the
+% GEM is not equal, fill the empty cells with empty string cell, and put
+% the IDs from the uniprot database where they match the uniprot from the
+% conversion file //isequal 1 if all the inputs are equivalent
 if ~isequal(uniprot,uniprotCompatibleGenes)
     uniprot(cellfun(@isempty,uniprot)) = {''};
     [Lia,Locb] = ismember(uniprot,uniprotDB.ID);
 end
+% noUniprot contains the the false logical indexes, so the genes that were
+% not found are in noUniprot
 noUniprot  = uniprotCompatibleGenes(~Lia);
+% if all of the logical indexes are false, then drop an error message
 if all(~Lia)
-    error('None of the proteins in uniprot.tsv match the genes in the model. Changes to the obj.params.uniprot parameters are likely required.')
+    error('None of the protein IDs in uniprot.tsv match the genes in the model. Changes to the obj.params.uniprot parameters are likely required.\n')
 elseif ~isempty(noUniprot)
     printOrange(['WARNING: The ' num2str(numel(noUniprot)) ' gene(s) reported in noUniprot cannot be found in data/uniprot.tsv, these will\n' ...
              'not be enzyme-constrained. If you intend to use different Uniprot data (e.g. from a\n'...
@@ -326,9 +338,31 @@ else
     end
 end
 
-%9: Add proteins as pseudometabolites
+%9: Add proteins as pseudometabolites 
+%%%%%%%%%%%%%%%%%%%%%%%B
+%Adding an if statement to clarify which identifier is used, ec.genes or ec.enzymes
+usedId = [];
+if isequal(ec.genes, ec.enzymes)
+    usedId = ec.genes;
+    printOrange('WARNING: Gene IDs are used to add proteins as pseudometabolites.\n')
+else 
+    usedId = ec.enzymes;
+    printOrange('WARNING: UniProt IDs are used to add proteins as pseudometabolites.\n')
+end
+%%%%%%%%%%%%%%%%%%%%%%B
+% genes can be used if enzyme info is not available
+% unique identifiers are extracted from the ec. field, and gives it to
+% proteinMets.mets, and also its first occurance is stored in uniprotSortId
+% the next line gives a 'prot_' prefix for the stuff that is loaded with
+% the unique
+% then the metNames is set to the same as mets which now contains the
+% prefix
+% compartments field from the GEM (i think) is saved in compartmentID
+% checks whether the model (the GEM) has the 'metMiriams' field, and loads
+% it, same with 'metCharges', 'metNotes'
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if ~geckoLight
-    [proteinMets.mets, uniprotSortId] = unique(ec.enzymes);
+    [proteinMets.mets, uniprotSortId] = unique(usedId);
     proteinMets.mets         = strcat('prot_',proteinMets.mets);
     proteinMets.metNames     = proteinMets.mets;
     proteinMets.compartments = compartmentID;
@@ -378,6 +412,22 @@ model = addRxns(model,poolRxn);
 
 model.ec=ec;
 end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%B
+%13: Subsetting loaded genome with genes present in the conventional GEM
+%{
+[~, idx] = ismember(model.ec.genes, model.genes);
+GemGene = ec.genes(idx>0);
+GemSeq = ec.seq(idx>0);
+disp('Writing the uniprotGEM.fasta file')
+fastaPath = fullfile(filePath,'uniprotGEM.fasta');
+fid = fopen(fastaPath, 'w');
+for i = 1:length(GemSeq)
+    fprintf(fid, '>%s\n%s\n', GemGene{i}, GemSeq{i});
+end
+fclose(fid);
+%}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%B
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %Function that gets the model field grRules and returns the indexes of the
