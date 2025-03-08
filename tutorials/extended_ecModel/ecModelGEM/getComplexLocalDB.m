@@ -1,4 +1,4 @@
-function [noUniProtSeq] = getComplexLocalDB(complexinfo,modeladapter)
+    function [noUniProtSeq] = getComplexLocalDB(complexinfo,modeladapter)
 % getComplexLocalDB
 %   Creates a 'ComplexPortalDB.fasta' file based on Complex Portal data
 %   and gives back the IDs that do not have a sequence in the UniProt 
@@ -21,16 +21,16 @@ if nargin < 2 || isempty(modeladapter)
     end
 end
 
-% Get the parameters from the modelAdapter
+%Get the parameters from the modelAdapter
 params      = modeladapter.getParameters();
-% Set the filePath to the given path given in the adapter
+%Set the filePath to the given path given in the adapter
 filePath    = fullfile(params.path,'data');
-% Set the path to where the file should be written
+%Set the path to where the file should be written
 fastaPath = fullfile(filePath,'ComplexPortalDB.fasta');
 
-% If no input argument is provided, or the 'complexinfo' input is empty
-% and complexinfo is not a file, load the complexinfo with getComplexData
-% if a file is found, it loads it
+%If no input argument is provided, or the 'complexinfo' input is empty
+%and complexinfo is not a file, load the complexinfo with getComplexData
+%if a file is found, it loads it
 if nargin < 1 || isempty(complexinfo)
     complexFilePath = fullfile(params.path, 'data', 'ComplexPortal.json');
     if ~isfile(complexFilePath)
@@ -45,21 +45,21 @@ end
 
 %
 
-% Initialize a container for goint through the UniProt IDs
+%Initialize a container for goint through the UniProt IDs
 complexPortalProtIDs = containers.Map('KeyType', 'char', 'ValueType', 'double');
 wrongID = 0; %count the IDs that should not be included
 
-% Iterate over each element of complexInfo
+%Iterate over each element of complexInfo
 for i = 1:length(complexinfo)
-    % Get the current protID cell array
+    %Get the current protID cell array
     currentProtIDs = complexinfo(i).protID;
     
-    % Iterate over each UniProt ID in the cell array
+    %Iterate over each UniProt ID in the cell array
     for j = 1:length(currentProtIDs)
         uniprotID = currentProtIDs{j};
         
-        % if contains pro, cpx, ebi, dont put it in the map, just increment the
-        % counter
+        %if contains pro, cpx, ebi, dont put it in the map, just increment the
+        %counter
         if contains(uniprotID, '-PRO_') || contains(uniprotID,  'CPX-') || contains(uniprotID, 'EBI-')
             wrongID = wrongID + 1;
         else
@@ -93,7 +93,7 @@ if exist(fastaPath, 'file')
     error(['A ComplexPortalDB.fasta already exists at: ' fastaPath])
 else
     disp('Fetching sequences from UniProt database. This might take a while.\n')
-    for i = 1:numel(keys) % this is going through each id and requests thes equences 
+    for i = 1:numel(keys) %this is going through each id and requests thes equences 
         currentID = keys{i};
         url = ['https://rest.uniprot.org/uniprotkb/accessions?accessions=' num2str(currentID) '&format=fasta'];
         options = weboptions('ContentType', 'binary', 'RequestMethod', 'get');
@@ -112,16 +112,16 @@ else
             fwrite(fid, compressedFastaData);
             fclose(fid);
     
-            % Decompress the gzip file
+            %Decompress the gzip file
             gunzip(tempGzipFile);
             decompressedFile = tempGzipFile(1:end-3);  % Remove .gz extension
     
-            % Read the decompressed FASTA data
+            %Read the decompressed FASTA data
             fid = fopen(decompressedFile, 'r');
             fastaData = fread(fid, '*char')';
             fclose(fid);
     
-            % Verify if FASTA data was actually retrieved
+            %Verify if FASTA data was actually retrieved
             if isempty(fastaData)
                 %warning('No FASTA data found for ID: %s', currentID);
                 missingIDs{end+1} = currentID; % Store the ID in the missing list
@@ -135,7 +135,7 @@ else
             %disp('first few bites: \n')
             %disp(compressedFastaData(1:min(10, numel(compressedFastaData))))
     
-            % Write the FASTA data to the output file
+            %Write the FASTA data to the output file
             fid = fopen(fastaPath, 'a');
             fprintf(fid, '%s', fastaData);
             fclose(fid);
@@ -153,7 +153,7 @@ else
             disp(ME.message)
             disp(currentID)
     
-            % Store the ID in the missing list
+            %Store the ID in the missing list
             missingIDs{end+1} = currentID;
             %warning('Error fetching sequence from uniProt for %s: %s', currentID, ME.message);
         end
@@ -161,13 +161,13 @@ else
     
     disp(['The ComplexPortalDB.fasta file is stored at: ' fastaPath]);
     disp(['Number of IDs processed and written to the FASTA file: ' num2str(foundID)]);
-    % If there are missing IDs, display them
+    %If there are missing IDs, display them
     if ~isempty(missingIDs)
         disp('Sequence is not found for the following ID(s): \n');
         disp(missingIDs);
         remove(complexPortalProtIDs, missingIDs)
     end
-    % the output gets the list of IDs that could not fetch a sequence
+    %the output gets the list of IDs that could not fetch a sequence
     noUniProtSeq = missingIDs;
 end
 noUniProtSeq = missingIDs;

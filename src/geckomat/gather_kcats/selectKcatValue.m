@@ -42,10 +42,16 @@ end
 if nargin < 3
     criteria = 'max';
 end
-
 % Remove zero kcat values. Only adjusting fields that are used later.
-removeZero                      = kcatList.kcats == 0;
-kcatList.kcats(removeZero)      = [];
+removeZero = false(size(kcatList.kcats)); 
+% Loop through each element in kcatList.kcats
+for i = 1:length(kcatList.kcats)
+    % Check if the numerical array in the current cell contains only zeros
+    if isnumeric(kcatList.kcats{i}) && all(kcatList.kcats{i} == 0)
+        removeZero(i) = true;  % Mark this index for removal
+    end
+end
+kcatList.kcats(removeZero)      = []; %it only removes kcats and reactions with zeros which i dont understand and i dont understand how it will know where to put it in the model tbh
 kcatList.rxns(removeZero)       = [];
 
 % Map to model.ec.rxns
@@ -54,7 +60,7 @@ if ~all(sanityCheck)
     error('Not all reactions in kcatList are found in model.ec.rxns')
 end
 % Make vector with single kcat value per reaction
-idxInModelUnique = unique(idxInModel);
+idxInModelUnique = unique(idxInModel); %I also dont understand why we need unique indexing when each reaction should already be different
 selectedKcats    = zeros(numel(idxInModelUnique),1);
 selectedSource   = cell(numel(selectedKcats),1);
 if ~isfield(kcatList,'kcatSource')
@@ -67,17 +73,23 @@ for i=1:numel(idxInModelUnique)
     % Choose the maximum number
     switch criteria
         case 'max'
-            [selectedKcats(i),j] = max(kcatList.kcats(idxMatch));
+            [selectedKcats(i),j] = max(kcatList.kcats{idxMatch});
         case 'min'
-            [selectedKcats(i),j] = min(kcatList.kcats(idxMatch));
+            [selectedKcats(i),j] = min(kcatList.kcats{idxMatch});
         case 'median'
-            [selectedKcats(i),j] = median(kcatList.kcats(idxMatch));
+            [selectedKcats(i)] = median(kcatList.kcats{idxMatch});
+            j = 1;
         case 'mean'
-            [selectedKcats(i),j] = mean(kcatList.kcats(idxMatch));
+            [selectedKcats(i)] = mean(kcatList.kcats{idxMatch});
+            j = 1;
         otherwise
             error('Invalid criteria specified')
     end
-    selectedSource(i)    = kcatList.kcatSource(idxMatch(j));
+    if numel(idxMatch) > 1 
+        selectedSource(i)    = kcatList.kcatSource(idxMatch(j));
+    else
+        selectedSource(i)    = kcatList.kcatSource(idxMatch); %use idxMatch directly if it's a scalar
+    end
 end
 
 % Populate model.ec.kcat

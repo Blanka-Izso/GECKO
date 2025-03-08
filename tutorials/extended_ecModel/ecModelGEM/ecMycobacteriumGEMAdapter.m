@@ -14,17 +14,24 @@ classdef ecMycobacteriumGEMAdapter < ModelAdapter
 			obj.params.sigma = 0.5;
 
 			% Total protein content in the cell [g protein/gDw]
-			obj.params.Ptot = 0.5;
+			%obj.params.Ptot = 0.005259520; %CHL-ACE condition 0.005259520
+            obj.params.Ptot = 0.22;
+           
 
 			% Fraction of enzymes in the model [g enzyme/g protein]
-			obj.params.f = 0.5;
+			obj.params.f = 0.4493529;
+            %0.4493529 comes from the absolute proteome paper Rstudio
+            %calculation with the chl-ace condition Dw borah et al
             
             % Growth rate the model should be able to reach when not
             % constraint by nutrient uptake (e.g. max growth rate) [1/h]
-			obj.params.gR_exp = 0.058;
+			obj.params.gR_exp = 0.04715286942;
+            %0.01004561131 from 69h from borah et al 2021
+            %0.058 from fba from model
+            % 0.04715286942 fastest growht rate: 14.7, B.W. James 1999
 
 			% Provide your organism scientific name
-			obj.params.org_name = 'Mycobacterium tubercolosis';
+			obj.params.org_name = 'Mycobacterium tuberculosis';
             
             % Taxonomic identifier for Complex Portal
             % [] is empty, does not download anything
@@ -64,7 +71,10 @@ classdef ecMycobacteriumGEMAdapter < ModelAdapter
             obj.params.uniprot.reviewed = '';
 
 			% Reaction ID for glucose exchange reaction (or other preferred carbon source)
+            % this is a carbon source i guess, it likes fat?
 			obj.params.c_source = 'EX_glyc_e'; 
+            %obj.params.c_source = 'EX_ac_e';
+            
 
 			% Reaction ID for biomass pseudoreaction
 			obj.params.bioRxn = 'BIOMASS__2';

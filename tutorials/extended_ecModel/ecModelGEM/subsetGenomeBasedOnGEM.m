@@ -18,7 +18,7 @@ function subsetGenomeBasedOnGEM(ecmodel, model, modelAdapter)
 % Usage:
 %       subsetGenomeBasedOnGem(ecmodel, model, modelAdapter)
 
-% if modelAdapter is not given, set it to default
+%if modelAdapter is not given, set it to default
 if nargin < 3 || isempty(modelAdapter)
     modelAdapter = ModelAdapterManager.getDefault();
     if isempty(modelAdapter)
@@ -26,20 +26,18 @@ if nargin < 3 || isempty(modelAdapter)
     end
 end
 
-% Get the parameters from the modelAdapter
+%Get the parameters from the modelAdapter
 params      = modelAdapter.getParameters();
-% Set the filePath to the given path given in the adapter
+%Set the filePath to the given path given in the adapter
 filePath    = fullfile(params.path,'data');
 
-% Do the comparison and write the fasta file
-% Checks whether a gene in the extended model is present in the
-% conventional GEM writes the IDs and the corresponding sequences into a
-% .fasta file
+%Do the comparison and write the fasta file
+%Checks whether a gene in the extended model is present in the
+%conventional GEM writes the IDs and the corresponding sequences into a
+%.fasta file
 [Lia, ~] = ismember(ecmodel.ec.genes,model.genes);
 GemGene = ecmodel.ec.genes(Lia);
 GemSeq = ecmodel.ec.sequence(Lia);
-%assert(length(GemGene) == length(GemSeq), 'Mismatch between genes and sequences.'); %Checking their length, should be equal
-
 fastaPath = fullfile(filePath,'uniprotGEM.fasta');
 
 if exist(fastaPath, 'file')

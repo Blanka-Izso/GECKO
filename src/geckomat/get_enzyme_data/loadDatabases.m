@@ -40,15 +40,6 @@ uniprot.type = params.uniprot.type;
 %if conventional GEM does not exist named as model, load the conventional
 %GEM as model
 %This way the GEM is reachable from workspace but loaded if not
-%%%%
-%GEMpath = params.convGEM;
-
-%if ~isempty(GEMpath)
-%    disp('Conventional GEM loading')
-%    model = loadConventionalGEM();
-%end
-
-%%%%%
 if strcmp(uniprot.type,'taxonomy')
     uniprot.type = 'taxonomy_id';
 end
@@ -67,7 +58,6 @@ databases.kegg = [];
 %% Uniprot
 if any(strcmp(selectDatabase,{'uniprot','both'}))
     uniprotPath = fullfile(filePath,'uniprot.tsv');
-    %printOrange('WARNING: Default ''both'' or ''uniprot'' input is used.\n')
     if ~exist(uniprotPath,'file')
         if isempty(uniprot.ID)
             printOrange('WARNING: No uniprot.ID is specified, unable to download UniProt DB.\n')
@@ -116,21 +106,6 @@ if any(strcmp(selectDatabase,{'uniprot','both'}))
     end
 end
 
-%Subset the uniprot database based on the genes found in the conventional
-%GEM
-%{
-[~, idx] = ismember(databases.uniprot.genes, model.genes);
-uniprotGemGene = databases.uniprot.genes(idx>0);
-uniprotGemSeq = databases.uniprot.seq(idx>0);
-disp('Writing the uniprotGEM.fasta file')
-fastaPath = fullfile(filePath,'uniprotGEM.fasta');
-fid = fopen(fastaPath, 'w');
-for i = 1:length(uniprotGemSeq)
-    fprintf(fid, '>%s\n%s\n', uniprotGemGene{i}, uniprotGemSeq{i});
-end
-fclose(fid);
-
-%}
 %% KEGG
 if any(strcmp(selectDatabase,{'kegg','both'}))
     keggPath = fullfile(filePath,'kegg.tsv');

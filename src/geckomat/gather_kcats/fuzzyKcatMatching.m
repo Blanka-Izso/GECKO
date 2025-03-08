@@ -85,6 +85,7 @@ else
     rxnNames = extractAfter(model.ec.rxns, 4);
 end
 [~,originalRxns] = ismember(rxnNames(ecRxns),model.rxns);
+
 for i = 1:length(ecRxns)
     sel = find(model.S(:,originalRxns(i)) < 0);
     substrates{i}  = model.metNames(sel); 
@@ -115,18 +116,20 @@ for i = 1:length(phylDistStruct.genus)
 end
 
 %Allocate output
-kcats = zeros(length(eccodes),1);
+kcats = cell(length(eccodes),1); 
+kcats(:) = {0};
 mM = length(eccodes);
+origins = zeros(length(eccodes),1);
 
 %Create empty kcatInfo
 %Legacy, no longer given as output, rather used to construct
 %kcatList.wildcardLvl and kcatList.origin.
-kcatInfo.info.org_s   = zeros(mM,1);
-kcatInfo.info.rest_s  = zeros(mM,1);
-kcatInfo.info.org_ns  = zeros(mM,1);
-kcatInfo.info.rest_ns = zeros(mM,1);
-kcatInfo.info.org_sa  = zeros(mM,1);
-kcatInfo.info.rest_sa = zeros(mM,1);
+kcatInfo.info.org_s   = cell(mM,1);
+kcatInfo.info.rest_s  = cell(mM,1);
+kcatInfo.info.org_ns  = cell(mM,1);
+kcatInfo.info.rest_ns = cell(mM,1);
+kcatInfo.info.org_sa  = cell(mM,1);
+kcatInfo.info.rest_sa = cell(mM,1);
 kcatInfo.info.wcLevel = NaN(mM,1);
 kcatInfo.stats.queries  = 0;
 kcatInfo.stats.org_s    = 0;
@@ -157,11 +160,17 @@ while forceWClvl > 0
     eccodes=regexprep(eccodes,'(.)*(\.\d+)(\.-)*$','$1\.-$3');
     forceWClvl = forceWClvl - 1;
 end
+ 
 if forceWClvl == 1
     eccodes = regexprep(eccodes,'.*','-\.-\.-\.-');
 end
 
 progressbar('Gathering kcat values by fuzzy matching to BRENDA database')
+
+%Setting thresholds for collected kcats
+kcatMinThreshold = 1E-3;
+kcatMaxThreshold = 1E7;
+
 %Main loop:
 for i = 1:mM
     %Match:
@@ -170,7 +179,7 @@ for i = 1:mM
         EC = strsplit(EC,';');
         %Try to match direct reaction:
         if ~isempty(substrates{i})
-            [kcats(i), kcatInfo.info,kcatInfo.stats] = iterativeMatch(EC,substrates{i},substrCoeffs{i},i,KCATcell,...
+            [kcats{i}, kcatInfo.info,kcatInfo.stats, origins(i)] = iterativeMatch(EC,substrates{i},substrCoeffs{i},i,KCATcell,...
                 kcatInfo.info,kcatInfo.stats,org_name,...
                 phylDistStruct,org_index,SAcell,ECIndexIds,EcIndexIndices);
         end
@@ -178,27 +187,53 @@ for i = 1:mM
     progressbar(i/mM)
 end
 
-kcatList.source      = 'brenda';
-kcatList.rxns        = model.ec.rxns(ecRxns);
-kcatList.substrates  = substrates;
-kcatList.kcats       = kcats;
-kcatList.eccodes     = eccodes;
-kcatList.wildcardLvl = kcatInfo.info.wcLevel;
-kcatList.origin      = NaN(numel(model.ec.rxns(ecRxns)),1);
+kcatList.source         = 'brenda';
+kcatList.rxns           = model.ec.rxns(ecRxns);
+kcatList.substrates     = substrates;
+kcatList.kcats          = kcats;
+kcatList.eccodes        = eccodes;
+kcatList.wildcardLvl    = kcatInfo.info.wcLevel;
+%kcatList.origin      = NaN(numel(model.ec.rxns(ecRxns)),1);
+kcatList.origin         = origins;
 % This can be refactored, iterativeMatch and their nested functions can
-% just directly report the origin number.
-origin = [kcatInfo.info.org_s kcatInfo.info.rest_s kcatInfo.info.org_ns kcatInfo.info.rest_ns kcatInfo.info.org_sa kcatInfo.info.rest_sa];
-for i=1:6
-    kcatList.origin(find(origin(:,i))) = i;
+% just directly report the origin number. => So it has been done
+%origin = [kcatInfo.info.org_s kcatInfo.info.rest_s kcatInfo.info.org_ns kcatInfo.info.rest_ns kcatInfo.info.org_sa kcatInfo.info.rest_sa];
+%for i=1:6
+%    kcatList.origin(find(origin(:,i))) = i;
+%end
+
+%After gathering the kcats and putting them in the struct, do the
+%concatenation of more cells into one so it doesn't disrupt the flow
+%forward
+for i = 1:length(kcatList.kcats)
+    current = kcatList.kcats{i};  % Get the current element
+    
+    if iscell(current)
+        if length(current) == 1 && isnumeric(current{1})
+            % If it’s a 1x1 cell containing a numeric array, unwrap it
+            kcatList.kcats{i} = current{1};
+        else
+            % Concatenate multiple numeric elements within the cell
+            concatenatedArray = [];
+            for j = 1:length(current)
+                if isnumeric(current{j})
+                    % Concatenate the numeric elements horizontally
+                    concatenatedArray = [concatenatedArray, current{j}];
+                end
+            end
+            % Replace the cell array at this index with the concatenated numeric array
+            kcatList.kcats{i} = concatenatedArray;
+        end
+    end
 end
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-function [kcat,dir,tot] =iterativeMatch(EC,subs,substrCoeff,i,KCATcell,dir,tot,...
+function [kcat,dir,tot, origins] =iterativeMatch(EC,subs,substrCoeff,i,KCATcell,dir,tot,...
     name,phylDist,org_index,SAcell,ECIndexIds,EcIndexIndices)
 %Will iteratively try to match the EC number to some registry in BRENDA,
 %using each time one additional wildcard.
 
-kcat    = zeros(size(EC));
+kcat = cell(size(EC)); %initalise to hold more values at once
 origin  = zeros(size(EC));
 matches = zeros(size(EC));
 wc_num  = ones(size(EC)).*1000;
@@ -206,13 +241,21 @@ for k = 1:length(EC)
     success  = false;
     while ~success
         %Atempt match:
+        %{
         [kcat(k),origin(k),matches(k)] = mainMatch(EC{k},subs,substrCoeff,KCATcell,...
             name,phylDist,...
             org_index,SAcell,ECIndexIds,EcIndexIndices);
+        %}
+        %attempt matching with the cell array
+
+        [kcat{k}, origin(k), matches(k)] = mainMatch(EC{k}, subs, substrCoeff, KCATcell,...
+            name, phylDist, org_index, SAcell, ECIndexIds, EcIndexIndices);
+      
         %If any match found, ends. If not, introduces one extra wild card and
         %tries again:
         if origin(k) > 0
             success   = true;
+            %kcat{k} = [kcat{k}; kcat'];%
             wc_num(k) = sum(EC{k}=='-');
         else
             dot_pos  = [2 strfind(EC{k},'.')];
@@ -224,38 +267,54 @@ for k = 1:length(EC)
 end
 
 if sum(origin) > 0
-    %For more than one EC: Choose the maximum value among the ones with the
+    %For more than one EC: Choose all values among the ones with the
     %less amount of wildcards and the better origin:
-    best_pos   = (wc_num == min(wc_num));
-    new_origin = origin(best_pos);
-    best_pos   = (origin == min(new_origin(new_origin~=0)));
-    max_pos    = find(kcat == max(kcat(best_pos)));
-    wc_num     = wc_num(max_pos(1));
-    origin     = origin(max_pos(1));
-    matches    = matches(max_pos(1));
-    kcat       = kcat(max_pos(1));
+    best_pos   = (wc_num == min(wc_num)); %%%B wc_num is the sum of - in the EC number, mostly 0, best pos is mostly one
+    wc_num      = wc_num(best_pos);
+    new_origin = origin(best_pos); %%%B new_origin holds the origin number 
+    best_pos   = (new_origin == min(new_origin(new_origin~=0))); %new best_pos
+    %%%max_pos    = find(kcat == max(kcat(best_pos)));
+    %Reduce wc_num to one scalar if all the elements in the array are the
+    %same, as they should be, bc that's when they are on the same lvl
+    %if all elements are equal to the first, reduce to that scalar
+    if all(wc_num == wc_num(1))
+        wc_num = wc_num(1);
+    else
+        error('wc numbers are different')
+    end
+    new_origin      = new_origin(best_pos);
+    if all(new_origin == new_origin(1))
+        new_origin = new_origin(1);
+    else
+        error('origin numbers are different')
+    end
+    matches     = matches(best_pos);
+    kcat = kcat(best_pos);
+    origins = new_origin;
 
     %Update dir and tot:
-    dir.org_s(i)   = matches*(origin == 1);
-    dir.rest_s(i)  = matches*(origin == 2);
-    dir.org_ns(i)  = matches*(origin == 3);
-    dir.org_sa(i)  = matches*(origin == 4);
-    dir.rest_ns(i) = matches*(origin == 5);
-    dir.rest_sa(i) = matches*(origin == 6);
+    
+    dir.org_s{i}   = matches.*(new_origin == 1);
+    dir.rest_s{i}  = matches.*(new_origin == 2);
+    dir.org_ns{i}  = matches.*(new_origin == 3);
+    dir.org_sa{i}  = matches.*(new_origin == 4);
+    dir.rest_ns{i} = matches.*(new_origin == 5);
+    dir.rest_sa{i} = matches.*(new_origin == 6);
     dir.wcLevel(i) = wc_num;
-    tot.org_s        = tot.org_s   + (origin == 1);
-    tot.rest_s       = tot.rest_s  + (origin == 2);
-    tot.org_ns       = tot.org_ns  + (origin == 3);
-    tot.org_sa       = tot.org_sa  + (origin == 4);
-    tot.rest_ns      = tot.rest_ns + (origin == 5);
-    tot.rest_sa      = tot.rest_sa + (origin == 6);
+    tot.org_s        = tot.org_s   + (new_origin == 1);
+    tot.rest_s       = tot.rest_s  + (new_origin == 2);
+    tot.org_ns       = tot.org_ns  + (new_origin == 3);
+    tot.org_sa       = tot.org_sa  + (new_origin == 4);
+    tot.rest_ns      = tot.rest_ns + (new_origin == 5);
+    tot.rest_sa      = tot.rest_sa + (new_origin == 6);
     tot.wc0          = tot.wc0     + (wc_num == 0);
     tot.wc1          = tot.wc1     + (wc_num == 1);
     tot.wc2          = tot.wc2     + (wc_num == 2);
     tot.wc3          = tot.wc3     + (wc_num == 3);
     tot.wc4          = tot.wc4     + (wc_num == 4);
     tot.queries      = tot.queries + 1;
-    tot.matrix(origin,wc_num+1) = tot.matrix(origin,wc_num+1) + 1;
+    tot.matrix(new_origin,wc_num+1) = tot.matrix(new_origin,wc_num+1) + 1;
+    
 end
 
 end
@@ -373,12 +432,24 @@ else
         kcat = KCATcell{4}(EC_indexes);
     end
 end
-%Return maximum value:
+
+%Setting thresholds for collected kcats
+kcatMinThreshold = 1E-3;
+kcatMaxThreshold = 1E7;
+
+% Filter kcat values below the minimum threshold and cap above the max
+kcat = kcat(kcat >= kcatMinThreshold); % Remove values below min threshold
+kcat(kcat > kcatMaxThreshold) = kcatMaxThreshold; % Cap values above max threshold
+
+
+%Return all found values:
 if isempty(kcat)
     kcat = 0;
 else
     matches        = length(kcat);
-    [kcat,MaxIndx] = max(kcat);
+    if iscolumn(kcat)
+        kcat = kcat';
+    end
 end
 %Avoid SA*Mw values over the diffusion limit rate  [Bar-Even et al. 2011]
 if kcat>(1E7)
@@ -453,7 +524,7 @@ if string(organism) ~= ''
 
     %If KEGG code was assigned to the organism (model) then it will look for
     %the Kcat value for the closest organism
-elseif org_index~='*' %&& org_index~=''
+elseif org_index~='*' 
     KEGG_indexes = [];temp = [];
 
     %For relating a phyl dist between the modelled organism and the organisms

@@ -35,28 +35,67 @@ end
 
 [~,rxnIdxs] = ismember(rxnNames,model.rxns);
 
-% Check if eccodes are valid
+
+% Capture each EC number and validate their validity separately
 eccodes = model.eccodes;
-invalidEC = regexprep(eccodes,'(\d\.(\w|-)+\.(\w|-)+\.(\w|-)+)(;\w+\.(\w|-)+\.(\w|-)+\.(\w|-)+)*(.*)','$3');
-invalidEC = ~cellfun(@isempty,invalidEC);
-invalidECpos = find(invalidEC);
-if any(invalidECpos)
-    invalidEC = model.eccodes(invalidEC);
-    if nargout<2
-        fprintf('Skipped incorrectly formatted EC numbers, rerun getECfromGEM with all outputs to get a list.\n')
+
+validECPattern = '^(\d+|-)\.(\d+|-)\.(\d+|-)\.(\d+|-)$';
+
+invalidEC = cell(size(eccodes));
+invalidECpos = [];
+
+for i = 1:numel(eccodes)
+    if isempty(eccodes{i})
+        continue;
+    end
+
+    codes = strsplit(eccodes{i}, ';');
+
+    validCodes = {};
+    invalidCodes = {};
+
+    for j = 1:numel(codes)
+        if ~isempty(regexp(codes{j}, validECPattern, 'once'))
+            validCodes{end+1} = codes{j};
+
+        else
+            invalidCodes{end+1} = codes{j};
+        end
+    end
+
+
+    if ~isempty(validCodes)
+        eccodes{i} = strjoin(validCodes, ';');
     else
-        fprintf('Skipped incorrectly formatted EC numbers.\n')
+        eccodes{i} = '';
     end
-    eccodes(invalidECpos)={''};
-else
-    invalidEC = [];
-end
-if nargin<2 || all(ecRxns)
-    model.ec.eccodes = eccodes(rxnIdxs);
-else
-    if ~isfield(model.ec,'eccodes')
-        model.ec.eccodes(1:numel(model.ec.rxns),1) = {''};
+
+    if ~isempty(invalidCodes)
+        invalidEC{i} = strjoin(invalidCodes, ';');
+        invalidECpos = [invalidECpos; i];
+    else
+        invalidEC{i} = '';
     end
-    model.ec.eccodes(ecRxns) = eccodes(rxnIdxs(ecRxns));
+
+    invalidEC = invalidEC(~cellfun(@isempty, invalidEC));
+    invalidEC = invalidEC(:);
+
+    if nargin<2 || all(ecRxns)
+        model.ec.eccodes = eccodes(rxnIdxs);
+    else
+        if ~isfield(model.ec,'eccodes')
+            model.ec.eccodes(1:numel(model.ec.rxns),1) = {''};
+        end
+        model.ec.eccodes(ecRxns) = eccodes(rxnIdxs(ecRxns));
+    end
+end
+if ~isempty(invalidECpos)
+    if nargout < 2
+        fprintf('Skipped incorrectly formatted EC numbers, rerun getECfromGEM with all outputs to get a list of invalid entries.\n');
+    else
+        fprintf('Skipped incorrectly formatted EC numbers.\n');
+    end
 end
 end
+
+%}
